@@ -19,3 +19,5 @@ It highlights additions and deletions so you can quickly spot changes.
 The application is a single HTML file and has no build step or external dependencies beyond the `diff` library served via CDN.
 
 Contributions are welcome!
+
+https://laibingjia.github.io/text-diff/
