@@ -1,0 +1,66 @@
+name: Smoke test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  static-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Verify vendored diff renderer
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const vm = require('vm');
+
+          const html = fs.readFileSync('index.html', 'utf8');
+          const vendor = fs.readFileSync('vendor/diff.min.js', 'utf8');
+          const inlineScripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+            .map(match => match[1])
+            .join('\n');
+
+          const nodes = {};
+          function makeElement() {
+            return { value: '', innerHTML: '', addEventListener() {} };
+          }
+
+          const context = {
+            window: {
+              addEventListener(event, callback) {
+                if (event === 'DOMContentLoaded') callback();
+              },
+            },
+            document: {
+              getElementById(id) {
+                nodes[id] ||= makeElement();
+                return nodes[id];
+              },
+            },
+            localStorage: {
+              data: {},
+              getItem(key) { return this.data[key] ?? null; },
+              setItem(key, value) { this.data[key] = String(value); },
+              removeItem(key) { delete this.data[key]; },
+            },
+            console,
+          };
+
+          vm.createContext(context);
+          vm.runInContext(vendor, context);
+          vm.runInContext(inlineScripts, context);
+          context.renderDiff('one\ntwo old', 'one\ntwo new');
+
+          const output = nodes.result.innerHTML;
+          if (!output.includes('diff-line')) throw new Error('Expected line-numbered rows');
+          if (!output.includes('added')) throw new Error('Expected added markup');
+          if (!output.includes('deleted')) throw new Error('Expected deleted markup');
+          NODE

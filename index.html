@@ -35,7 +35,6 @@
       cursor: pointer;
     }
     .diff-result {
-      white-space: pre-wrap;
       font-family: monospace;
       background: #fff;
       padding: 20px;
@@ -43,24 +42,28 @@
       border-radius: 4px;
       min-height: 200px;
       counter-reset: linenumber;
+      overflow-x: auto;
     }
-    .diff-result div {
+    .diff-line {
       position: relative;
       display: flex;
       align-items: flex-start;
       padding: 2px 0;
-      white-space: pre;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
-    .diff-result div:before {
+    .diff-line::before {
       counter-increment: linenumber;
       content: counter(linenumber);
-      display: inline-block;
-      width: 2em;
+      flex: 0 0 2em;
       margin-right: 8px;
       text-align: right;
-      colour: #999; /* 这里是文本颜色，CSS 要用 color */
       color: #999999;
       user-select: none;
+    }
+    .diff-line-content {
+      flex: 1;
+      min-width: 0;
     }
     .added {
       background-color: #ccffcc;
@@ -96,8 +99,8 @@
 
   <div id="result" class="diff-result"></div>
 
-  <!-- 引入 jsdiff -->
-  <script src="https://cdn.jsdelivr.net/npm/diff@5.1.0/dist/diff.min.js"></script>
+  <!-- jsdiff is vendored so the app can run without a network connection. -->
+  <script src="vendor/diff.min.js"></script>
   <script>
     const oldTa      = document.getElementById('oldText');
     const newTa      = document.getElementById('newText');
@@ -119,33 +122,46 @@
                  .match(/\w+|[^\w\s]|\n|\s+/g) || [];
     }
 
+    function appendSegment(lines, text, cls) {
+      const pieces = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+
+      pieces.forEach((piece, index) => {
+        if (index > 0) {
+          lines.push('');
+        }
+
+        if (!piece) {
+          return;
+        }
+
+        const escaped = escapeHtml(piece);
+        if (cls && !/^\s+$/.test(piece)) {
+          lines[lines.length - 1] += `<span class="${cls}">${escaped}</span>`;
+        } else {
+          lines[lines.length - 1] += escaped;
+        }
+      });
+    }
+
+    function renderLines(lines) {
+      return lines.map(line => (
+        `<div class="diff-line"><span class="diff-line-content">${line || '&nbsp;'}</span></div>`
+      )).join('');
+    }
+
     // 渲染差异并保存
     function renderDiff(oldStr, newStr) {
       const diff = Diff.diffWordsWithSpace(oldStr, newStr);
+      const lines = [''];
 
-      let html = '';
       diff.forEach(part => {
         const cls = part.added   ? 'added'
                   : part.removed ? 'deleted'
                   : null;
-        const text = part.value;
-        if (cls) {
-          // 分离前后空白，避免染色空格
-          const leadMatch  = text.match(/^(\s+)/);
-          const trailMatch = text.match(/(\s+)$/);
-          const leading    = leadMatch  ? leadMatch[1]  : '';
-          const trailing   = trailMatch ? trailMatch[1] : '';
-          const core       = text.slice(leading.length, text.length - trailing.length);
-          html += escapeHtml(leading)
-               + `<span class="${cls}">${escapeHtml(core)}</span>`
-               + escapeHtml(trailing);
-        } else {
-          html += escapeHtml(text);
-        }
+        appendSegment(lines, part.value, cls);
       });
 
-      // 保留换行
-      html = html.replace(/\n/g, '<br>');
+      const html = renderLines(lines);
       resultDiv.innerHTML = html;
 
       // 保存到 localStorage
